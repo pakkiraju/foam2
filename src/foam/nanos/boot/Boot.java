@@ -7,12 +7,20 @@
 package foam.nanos.boot;
 
 import foam.core.*;
-import foam.dao.*;
-import foam.nanos.auth.*;
+import foam.dao.AbstractSink;
+import foam.dao.DAO;
+import foam.dao.JDAO;
+import foam.dao.ProxyDAO;
+import foam.nanos.auth.User;
+import foam.nanos.script.Script;
 import foam.nanos.session.Session;
-import foam.nanos.script.*;
-import java.io.IOException;
-import static foam.mlang.MLang.*;
+import org.apache.commons.io.IOUtils;
+
+import java.io.FileInputStream;
+import java.security.KeyStore;
+import java.util.Properties;
+
+import static foam.mlang.MLang.EQ;
 
 public class Boot {
   protected DAO serviceDAO_;
@@ -30,6 +38,7 @@ public class Boot {
     serviceDAO_ = new JDAO(((foam.core.ProxyX)root_).getX(), NSpec.getOwnClassInfo(), "services");
 
     installSystemUser();
+    installKeyStore();
 
     serviceDAO_.select(new AbstractSink() {
       public void put(FObject obj, Detachable sub) {
@@ -79,6 +88,41 @@ public class Boot {
 
     root_.put("user", user);
     root_.put(Session.class, session);
+  }
+
+  /**
+   * Loads a keystore file and stores it in the context using a factory
+   */
+  protected void installKeyStore() {
+    root_.putFactory(KeyStore.class, new XFactory() {
+      @Override
+      public Object create(X x) {
+        FileInputStream configIn = null;
+        FileInputStream keyStoreIn = null;
+
+        try {
+          // load config.properties
+          configIn = new FileInputStream("config.properties");
+
+          // load properties file and get password
+          Properties properties = new Properties();
+          properties.load(configIn);
+          char[] password = properties.
+              getProperty("keystore.password").toCharArray();
+
+          // load keystore using password
+          keyStoreIn = new FileInputStream("keystore.jks");
+          KeyStore keystore = KeyStore.getInstance("BKS", "BC");
+          keystore.load(keyStoreIn, password);
+          return keystore;
+        } catch (Throwable t) {
+          throw new RuntimeException(t);
+        } finally {
+          IOUtils.closeQuietly(configIn);
+          IOUtils.closeQuietly(keyStoreIn);
+        }
+      }
+    });
   }
 
   public X getX() { return root_; }
